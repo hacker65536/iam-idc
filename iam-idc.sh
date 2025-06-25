@@ -20,7 +20,7 @@ show_help() {
     echo ""
     echo "Commands:"
     echo "  list-groups [SEARCH_TERM]      グループ一覧を表示（オプション：グループ名での検索）"
-    echo "  list-users [GROUP_ID]          指定されたグループのユーザ一覧を表示"
+    echo "  list-users                     全ユーザー一覧を表示"
     echo "  list-users-in-group [GROUP_ID] 指定されたグループのユーザ一覧を表示（引数なしでfzf選択）"
     echo "  help                           このヘルプメッセージを表示"
     echo ""
@@ -35,25 +35,23 @@ show_help() {
     echo "Examples:"
     echo "  $0 list-groups"
     echo "  $0 list-groups Admin"
-    echo "  $0 list-users group-12345678"
+    echo "  $0 list-users"
     echo "  $0 list-users-in-group"
     echo "  $0 list-users-in-group group-12345678"
     echo "  $0 list-groups --profile myprofile"
-    echo "  $0 list-users group-12345678 --identity-store-id d-1234567890"
+    echo "  $0 list-users --identity-store-id d-1234567890"
     echo "  $0 list-groups --output json"
-    echo "  $0 list-users group-12345678 --output text"
+    echo "  $0 list-users --output text"
     echo "  $0 list-groups --output text --format"
-    echo "  $0 list-users group-12345678 --output text --format"
+    echo "  $0 list-users --output text --format"
     echo "  $0 list-groups --debug"
-    echo "  $0 list-users group-12345678 --debug"
+    echo "  $0 list-users --debug"
     echo "  $0 list-groups Proj --debug"
 }
 
-# エラーメッセージを表示（デバッグモード時のみ）
+# エラーメッセージを表示
 error() {
-    if [ "$DEBUG_MODE" = true ]; then
-        echo -e "${RED}Error: $1${NC}" >&2
-    fi
+    echo -e "${RED}Error: $1${NC}" >&2
     exit 1
 }
 
@@ -559,6 +557,88 @@ select_group_with_fzf() {
     echo "$selected_group_id"
 }
 
+# 全ユーザー一覧を表示
+list_users() {
+    info "全ユーザー一覧を取得中..."
+    
+    local identity_store_id
+    identity_store_id=$(get_identity_store_id)
+    
+    local users
+    local query
+    
+    # 出力形式に応じてクエリを変更
+    case $OUTPUT_FORMAT in
+        json)
+            query='Users[*].{UserId:UserId,UserName:UserName,DisplayName:DisplayName,Email:Emails[0].Value}'
+            ;;
+        text)
+            query='Users[*].[UserId,UserName,DisplayName,Emails[0].Value]'
+            ;;
+        table)
+            query='Users[*].[UserId,UserName,DisplayName,Emails[0].Value]'
+            ;;
+    esac
+    
+    local aws_cmd
+    aws_cmd=$(build_aws_command "aws identitystore list-users --identity-store-id '$identity_store_id'")
+    aws_cmd="$aws_cmd --query '$query' --output '$OUTPUT_FORMAT'"
+    
+    # スピナー表示のためのバックグラウンド処理
+    {
+        if users=$(eval "$aws_cmd" 2>/dev/null) && [ -n "$users" ]; then
+            echo "$users" > "/tmp/users_result.txt"
+        else
+            echo "ERROR" > "/tmp/users_result.txt"
+        fi
+    } &
+    
+    local process_pid=$!
+    
+    # デバッグモードでない場合はスピナーを表示
+    if [ "$DEBUG_MODE" != true ]; then
+        show_spinner "$process_pid" "全ユーザー一覧を取得中..."
+    fi
+    
+    # プロセスの完了を待つ
+    wait "$process_pid"
+    
+    # 結果を読み込み
+    if [ -f "/tmp/users_result.txt" ]; then
+        local result
+        result=$(cat "/tmp/users_result.txt")
+        rm -f "/tmp/users_result.txt"
+        
+        if [ "$result" = "ERROR" ]; then
+            error "ユーザー一覧の取得に失敗しました。"
+        fi
+        
+        # ユーザー数を計算
+        local total_users=0
+        if [ "$OUTPUT_FORMAT" = "json" ]; then
+            if command -v jq &> /dev/null; then
+                total_users=$(echo "$result" | jq 'length')
+            fi
+        else
+            total_users=$(echo "$result" | wc -l)
+        fi
+        
+        echo ""
+        local format_suffix=""
+        if [ "$USE_COLUMN_FORMAT" = true ] && [ "$OUTPUT_FORMAT" = "text" ]; then
+            format_suffix=" (column整形)"
+        fi
+        success "全ユーザー一覧 ($OUTPUT_FORMAT 形式$format_suffix):"
+        format_output "$result"
+        
+        # 合計ユーザー数を表示
+        echo ""
+        echo "合計ユーザー数: $total_users"
+    else
+        error "ユーザー一覧の取得に失敗しました。"
+    fi
+}
+
 # 指定されたグループのユーザ一覧を表示
 list_users_in_group() {
     local group_id="$1"
@@ -799,12 +879,7 @@ main() {
                 ;;
             list-users)
                 COMMAND="list-users"
-                if [[ $# -gt 1 && ! $2 =~ ^-- ]]; then
-                    GROUP_ID="$2"
-                    shift 2
-                else
-                    shift
-                fi
+                shift
                 ;;
             list-users-in-group)
                 COMMAND="list-users-in-group"
@@ -840,10 +915,7 @@ main() {
             list_groups
             ;;
         list-users)
-            if [ -z "$GROUP_ID" ]; then
-                error "list-users コマンドにはグループIDが必要です。"
-            fi
-            list_users_in_group "$GROUP_ID"
+            list_users
             ;;
         list-users-in-group)
             if [ -z "$GROUP_ID" ]; then
