@@ -51,7 +51,7 @@ sudo ln -s $(pwd)/iam-idc.sh /usr/local/bin/iam-idc
 
 #### グループ一覧の表示
 ```bash
-# 全グループを表示
+# 全グループを表示（ユーザー数付き）
 ./iam-idc.sh list-groups
 
 # 特定の文字列を含むグループを検索
@@ -59,15 +59,27 @@ sudo ln -s $(pwd)/iam-idc.sh /usr/local/bin/iam-idc
 ./iam-idc.sh list-groups Section
 ```
 
-#### ユーザー一覧の表示
+#### 全ユーザー一覧の表示
+```bash
+# AWS Identity Store内の全ユーザーを表示
+./iam-idc.sh list-users
+
+# JSON形式で全ユーザーを表示
+./iam-idc.sh list-users --output json
+
+# デバッグ情報付きで全ユーザーを表示
+./iam-idc.sh list-users --debug
+```
+
+#### グループ所属ユーザーの表示
 ```bash
 # グループIDを指定してユーザー一覧を表示
-./iam-idc.sh list-users group-12345678
+./iam-idc.sh list-users-in-group a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 # グループ名を指定してユーザー一覧を表示
-./iam-idc.sh list-users-in-group Section
+./iam-idc.sh list-users-in-group SectionGroup1
 
-# インタラクティブにグループを選択
+# インタラクティブにグループを選択（fzf使用）
 ./iam-idc.sh list-users-in-group
 ```
 
@@ -117,11 +129,21 @@ c3d4e5f6-g7h8-9012-cdef-345678901234  SecurityAuditors      12
 合計グループ数: 3
 ```
 
-### ユーザー一覧
+### 全ユーザー一覧
 ```
 d4e5f6g7-h8i9-0123-defg-456789012345  john.doe@example.com         John Doe            john.doe@example.com
 e5f6g7h8-i9j0-1234-efgh-567890123456  jane.smith@example.com       Jane Smith          jane.smith@example.com
 f6g7h8i9-j0k1-2345-fghi-678901234567  bob.wilson@example.com       Bob Wilson          bob.wilson@example.com
+
+合計ユーザー数: 64
+```
+
+### グループ所属ユーザー一覧
+```
+グループ 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' のユーザ一覧 (text 形式 (column整形)):
+
+d4e5f6g7-h8i9-0123-defg-456789012345  john.doe@example.com         John Doe            john.doe@example.com
+e5f6g7h8-i9j0-1234-efgh-567890123456  jane.smith@example.com       Jane Smith          jane.smith@example.com
 ```
 
 ## 高度な機能
